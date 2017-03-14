@@ -26,26 +26,23 @@ class acortaURL(webapp.webApp):
             with open(fichero, 'r') as csvfile:
                 urlReader = csv.reader(csvfile)
                 for row in urlReader:
-                    print("Hola")
+                    self.diccURL[row[0]] = row[1]
+                    self.diccNUM[row[1]] = row[0]
+            del urlReader
+            csvfile.close()
         except IOError:
             csvfile = open(fichero,'w')
             csvfile.close()
 
     def saveURL(self, url):
-        subcadena = urllib.parse.quote('https://',safe='') \
-                    , urllib.parse.quote('http://',safe='')
-        if url.startswith(subcadena) == True:
-            urlOriginal = urllib.parse.unquote(url)
-        else:
-            urlOriginal = 'http://www.' + urllib.parse.unquote(url)
-            print(urlOriginal)
         #Guardo en Diccionario y lo escribo en el csv
         num = len(self.diccURL)
-        self.diccURL[urlOriginal] = num
-        self.diccNUM[num] = urlOriginal
-        with open(self.fich, 'w') as csvfile:
-            urlWriter = csv.writer(csvfile , delimiter=' ', quotechar='|',quoting = csv.QUOTE_MINIMAL)
-            urlWriter.writerow(urlOriginal + str(num))
+        self.diccURL[url] = num
+        self.diccNUM[num] = url
+        with open(self.fich, 'a') as csvfile:
+            urlWriter = csv.writer(csvfile)
+            urlWriter.writerow([url,num])
+        del urlWriter
         csvfile.close()
 
     def getURL(self, url):
@@ -58,6 +55,11 @@ class acortaURL(webapp.webApp):
 
     def processGET(self, rec):
         if rec == "/":
+            listURLS = ''
+            for url in self.diccURL:
+                listURLS = listURLS + url + "   |    " \
+                        + "http://www." + self.hostName + ":" + str(self.port) \
+                        + "/" + str(self.diccURL[url]) + "<br>"
             httpCode = "200 OK"
             htmlAnswer = "<!DOCTYPE html><html><body> " \
                 + "<form id='formulario' method='post'> " \
@@ -65,16 +67,18 @@ class acortaURL(webapp.webApp):
                 + "<input name='url' type='text'> " \
                 + "<input type='submit' value='Enviar'></form>" \
                 + " Estas son las URLS que se han acortado <br>" \
-                + str(self.diccURL) \
+                + listURLS \
                 + "</body></html>"
         else:
             num = rec[1:]
             if int(num) in self.diccNUM:
                 urlOriginal = self.diccNUM[int(num)]
-                httpCode = "301 Moved Permanently \r\n" \
-                        + "Location: " + urlOriginal
-                htmlAnswer = "<!DOCTYPE html><html><body> " \
-                            + " Va a ser redirigido </body></html>"
+                httpCode = "302 Found \r\n" \
+                            + "Location: " + urlOriginal
+                htmlAnswer = "<!DOCTYPE html><html><head><meta " \
+                        + "http-equiv='refresh' content='3'; url='" \
+                        + urlOriginal + "'> </head><body> Va a ser redirigido" \
+                        + " a " + urlOriginal  + "</body></html>"
             else:
                 httpCode = "404 Not Found"
                 htmlAnswer = "<!DOCTYPE html><html><body> " \
@@ -89,10 +93,10 @@ class acortaURL(webapp.webApp):
                 + "<h3>ERROR! Debe introducir una URL</h3>" \
                 + "</body></html>"
         else:
-            if not(urllib.parse.unquote(url) in self.diccURL):
-                self.saveURL(url)
-            httpCode = "200 Ok"
             urlTraducida = self.getURL(url)
+            if not(urlTraducida in self.diccURL):
+                self.saveURL(urlTraducida)
+            httpCode = "200 Ok"
             urlAcortada = "http://" + self.hostName + ":" + str(self.port) \
                         + "/" + str(self.diccURL[urlTraducida])
             htmlAnswer = "<!DOCTYPE html><html><body> Estas son las URLs<br>" \
@@ -120,11 +124,12 @@ class acortaURL(webapp.webApp):
     def process(self, parsedRequest):
         if parsedRequest != None:
             method, rec, url = parsedRequest
-            if method == 'GET':
-                httpCode, htmlAnswer = self.processGET(rec)
-            elif method == 'POST':
-                httpCode, htmlAnswer = self.processPOST(url)
-            return (httpCode, htmlAnswer)
+            if rec != "favicon.ico" :
+                if method == 'GET':
+                    httpCode, htmlAnswer = self.processGET(rec)
+                elif method == 'POST':
+                    httpCode, htmlAnswer = self.processPOST(url)
+                return (httpCode, htmlAnswer)
         else:
             return ("400 Bad Request", "<html><body> Peticion Inexistente </body></html>")
 
@@ -132,7 +137,7 @@ class acortaURL(webapp.webApp):
         self.port = port
         self.hostName = host
         self.fich = fich
-         #self.readCsv(fich)
+        self.readCsv(fich)
         webapp.webApp.__init__(self, host, port)
 
 if __name__ == "__main__":
